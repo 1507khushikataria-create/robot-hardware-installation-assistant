@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 
+API_URL = "https://robot-hardware-installation-assistant-production.up.railway.app"
+
 st.set_page_config(
     page_title="AI Robot Hardware Installation Assistant",
     layout="wide"
@@ -129,7 +131,7 @@ with tab1:
 
         try:
             response = requests.post(
-                "http://127.0.0.1:8000/upload-pdf",
+                f"{API_URL}/upload-pdf",
                 files=files,
                 timeout=300
             )
@@ -166,7 +168,7 @@ with tab2:
             # 7. Better Loading Messages
             with st.spinner("🤖 Consulting robot manuals..."):
                 response = requests.post(
-                    "http://127.0.0.1:8000/chat",
+                    f"{API_URL}/chat",
                     json={
                         "prompt": question
                     },
@@ -214,7 +216,7 @@ with tab3:
                 # 7. Better Loading Messages
                 with st.spinner("⚙️ Generating engineering workflow..."):
                     response = requests.post(
-                        "http://127.0.0.1:8000/generate-flowchart",
+                        f"{API_URL}/generate-flowchart",
                         json={
                             "topic": flowchart_topic
                         },
