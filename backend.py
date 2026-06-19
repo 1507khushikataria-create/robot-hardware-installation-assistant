@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 from pypdf import PdfReader
 from graphviz import Digraph
 import chromadb
-import requests
+import google.generativeai as genai
 import fitz
 
 
@@ -36,6 +36,12 @@ embedding_model = SentenceTransformer(
     "all-MiniLM-L6-v2"
 )
 
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 
 def chunk_text(text, chunk_size=500):
@@ -122,29 +128,9 @@ Question:
 {question}
 Answer: """
 
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "tinyllama",
-                "prompt": rag_prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "top_p": 0.9,
-                    "top_k": 20,
-                    "num_predict": 200,
-                    "repeat_penalty": 1.1
-                }
-            },
-            timeout=120
-        )
+        response = model.generate_content(rag_prompt)
 
-        ollama_result = response.json()
-
-        answer = ollama_result.get(
-            "response",
-            "No response generated."
-        )
+        answer = response.text
 
         return {
             "question": question,
@@ -239,38 +225,17 @@ Rules:
 - Do not use examples.
 """
 
-    print("OLLAMA STARTING")
-    
+    print("GEMINI STARTING")
+
     try:
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "tinyllama",
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "num_predict": 80
-                }
-            },
-            timeout=30
-        )
+        response = model.generate_content(prompt)
 
-        if response.status_code != 200:
-            print(f"OLLAMA ERROR: Status code {response.status_code}")
-            print(f"Ollama raw body: {response.text}")
-            return {"error": f"Ollama returned server status {response.status_code}"}
+        steps_text = response.text
+        print("GEMINI FINISHED")
 
-        ollama_data = response.json()
-        steps_text = ollama_data.get("response", "")
-        print("OLLAMA FINISHED")
-
-    except requests.exceptions.RequestException as req_err:
-        print(f"HTTP REQUEST FAILED: {str(req_err)}")
-        return {"error": f"Failed to reach Ollama instance: {str(req_err)}"}
-    except ValueError:
-        print(f"JSON DECODE FAILED. Raw response text was:\n{response.text}")
-        return {"error": "Ollama response was not valid JSON."}
+    except Exception as e:
+        print(f"GEMINI REQUEST FAILED: {str(e)}")
+        return {"error": f"Gemini request failed: {str(e)}"}
 
     print("\nLLM OUTPUT:\n")
     print(steps_text)
