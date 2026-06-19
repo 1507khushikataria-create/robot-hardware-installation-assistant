@@ -10,16 +10,21 @@ import google.generativeai as genai
 import fitz
 
 
+
 app = FastAPI()
+
 
 
 UPLOAD_FOLDER = "uploads"
 
 
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
+
 chroma_client = chromadb.Client()
+
 
 
 collection = chroma_client.get_or_create_collection(
@@ -27,9 +32,11 @@ collection = chroma_client.get_or_create_collection(
 )
 
 
+
 tokenizer = AutoTokenizer.from_pretrained(
     "distilbert-base-uncased"
 )
+
 
 
 embedding_model = SentenceTransformer(
@@ -37,11 +44,17 @@ embedding_model = SentenceTransformer(
 )
 
 
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 
 genai.configure(api_key=GEMINI_API_KEY)
 
+print("Gemini configured")
+
+
 model = genai.GenerativeModel("gemini-2.5-flash")
+
 
 
 def chunk_text(text, chunk_size=500):
@@ -52,9 +65,11 @@ def chunk_text(text, chunk_size=500):
 
 
 
+
 @app.get("/")
 def home():
     return {"message": "app is working"}
+
 
 
 
@@ -74,9 +89,11 @@ def tokenize_text(data: dict):
 
 
 
+
 @app.post("/test")
 def test():
     return {"message": "hello"}
+
 
 
 
@@ -85,34 +102,42 @@ def chat(data: dict):
     try:
         question = data.get("prompt", "")
 
+
         if not question:
             return {
                 "response": "Please enter a question."
             }
 
+
         query_embedding = embedding_model.encode(
             question
         ).tolist()
+
 
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=3
         )
 
+
         if not results["documents"]:
             return {
                 "response": "No documents found in the database."
             }
 
+
         retrieved_chunks = results["documents"][0]
+
 
         context = "\n\n".join(
             retrieved_chunks
         )
 
+
         rag_prompt = f"""You are an AI Robot Hardware Installation Assistant.
 Your job is to help technicians understand robot manuals, hardware installation guides, assembly instructions, and industrial documentation.
 Guidelines:
+
 
 * Answer directly.
 * Use natural language.
@@ -128,15 +153,21 @@ Question:
 {question}
 Answer: """
 
+
+        print("CALLING GEMINI")
         response = model.generate_content(rag_prompt)
+        print("GEMINI RETURNED")
+
 
         answer = response.text
+
 
         return {
             "question": question,
             "response": answer,
             "retrieved_chunks": retrieved_chunks
         }
+
 
     except Exception as e:
         return {
@@ -145,23 +176,29 @@ Answer: """
 
 
 
+
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
 
+
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
+
     reader = PdfReader(file_path)
     text = ""
+
 
     for page in reader.pages:
         page_text = page.extract_text()
         if page_text:
             text += page_text
 
+
     chunks = chunk_text(text)
     embeddings = embedding_model.encode(chunks)
+
 
     for i, chunk in enumerate(chunks):
         collection.add(
@@ -171,6 +208,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             embeddings=[embeddings[i].tolist()],
             ids=[f"{file.filename}_chunk_{i}"]
         )
+
 
     return {
         "message": "PDF uploaded successfully",
@@ -182,15 +220,19 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 
 
+
 @app.post("/generate-flowchart")
 def generate_flowchart(data: dict):
     print("FLOWCHART STARTED")
 
+
     topic = data.get("topic", "")
+
 
     query_embedding = embedding_model.encode(
         topic
     ).tolist()
+
 
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -198,24 +240,31 @@ def generate_flowchart(data: dict):
     )
     print("CHROMA SEARCH DONE")
 
+
     if not results["documents"] or not results["documents"][0]:
         return {
             "error": "No relevant manual content found."
         }
 
+
     retrieved_chunks = results["documents"][0][:2]
     context = "\n\n".join(retrieved_chunks)
+
 
     prompt = f"""
 You are a Bosch robotics engineer.
 
+
 Manual information:
 {context}
+
 
 Question:
 {topic}
 
+
 Extract the REAL procedure from the manual.
+
 
 Rules:
 - Return ONLY numbered steps.
@@ -225,21 +274,27 @@ Rules:
 - Do not use examples.
 """
 
+
     print("GEMINI STARTING")
+
 
     try:
         response = model.generate_content(prompt)
 
+
         steps_text = response.text
         print("GEMINI FINISHED")
+
 
     except Exception as e:
         print(f"GEMINI REQUEST FAILED: {str(e)}")
         return {"error": f"Gemini request failed: {str(e)}"}
 
+
     print("\nLLM OUTPUT:\n")
     print(steps_text)
     print("\n")
+
 
     steps = []
     for line in steps_text.split("\n"):
@@ -248,18 +303,23 @@ Rules:
             line = re.sub(r'^\d+[\.\-\)]\s*', '', line)
             steps.append(line)
 
+
     if not steps:
         return {"error": "The model did not generate any distinct parsing steps."}
 
+
     print("GRAPHVIZ STARTING")
     flowchart = Digraph()
+
 
     for i, step in enumerate(steps):
         flowchart.node(str(i), step)
         if i > 0:
             flowchart.edge(str(i - 1), str(i))
 
+
     output_path = "uploads/flowchart"
+
 
     try:
         flowchart.render(
@@ -270,6 +330,7 @@ Rules:
     except Exception as gv_err:
         print(f"Graphviz failed to render: {str(gv_err)}")
         return {"error": f"Graphviz layout engine failed: {str(gv_err)}"}
+
 
     print("FLOWCHART COMPLETE")
     return {
